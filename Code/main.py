@@ -112,7 +112,7 @@ def load_images(
 
     return train_loader, valid_loader, train_dataset.classes
 
-def CNN():
+def CNN_test():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -128,7 +128,7 @@ def CNN():
     The Code below was directly taken from
     """
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    for epoch in range(10):
+    for epoch in range(100):
         model.train()
         running = 0.0
         print(f"epoch {epoch+1}:")
@@ -153,4 +153,4 @@ def CNN():
 
 
 if __name__ == "__main__":
-    CNN()
+    CNN_test()
