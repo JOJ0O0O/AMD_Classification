@@ -1,0 +1,17 @@
+Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 1, 'module__channels': (64, 128, 256), 'module__kernel_size': 3, 'optimizer__weight_decay': 0.0}
+
+test accuracy 30.10%
+
+{'Accuracy': 0.3010204081632653, 'Precision': 0.46883377039627044, 'Sensitivity_recall': 0.2974212858987295, 'F1_score': 0.22650836680656378}
+Confusion Matrix: 
+
+[[ 2  1 85 10]
+ [ 0  4 71 20]
+ [ 3  0 71 25]
+ [ 0  0 59 41]]
+Mean test accuracy from Cross validation 
+
+[0.35440613 0.36590038]
+Standard deviation of the test accuracy from Cross validation 
+
+[0.00319285 0.03767561]
