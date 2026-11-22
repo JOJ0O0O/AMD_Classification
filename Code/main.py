@@ -5,7 +5,66 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from CNN import CNN
 from pathlib import Path
+from skorch import NeuralNetClassifier
+from skorch.callbacks import Callback
+from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, recall_score, f1_score
+import numpy as np
+import tqdm
+import sys
+from contextlib import redirect_stdout
+from cross_val_config import n_folds, image_size, param_grid #Import Configuration from separate config file
 
+torch.set_num_threads(16)
+
+def print_epoch_log(text):
+    """
+    Print so the text of the progress does not get put into results .txt
+    """
+    print(text, file=sys.stderr)
+
+class FitProgress(Callback):
+    """Update the shared progress bar after each model fit.
+    
+    Date: 2026-11-22.
+    Written by: AI assistant using Copilot SDK in VS Code.
+    Add this reusable indexed dataset class to the AMD classification project for the cross validation.
+    This corresponds to Level 2 usage of AI, as I tested, changed and validated this function myself.
+    """
+
+    progress_bar = None
+
+    def on_train_end(self, net, **kwargs):
+        if self.progress_bar is not None:
+            self.progress_bar.update(1)
+
+class IndexedImageDataset(torch.utils.data.Dataset):
+    """
+    Load ImageFolder samples lazily from sklearn-provided row indices.
+    
+    Date: 2026-11-22.
+    Written by: AI assistant using Copilot SDK in VS Code.
+    Add this reusable indexed dataset class to the AMD classification project for the cross validation.
+    This corresponds to Level 3 usage of AI, as I tested and validated this function myself
+    """
+    def __init__(self, indices, y=None, image_folder=None):
+        self.images = None
+        self.indices = None
+        if isinstance(indices, (np.ndarray, torch.Tensor)) and indices.ndim > 1:
+            self.images = indices
+        elif image_folder is None:
+            raise ValueError("image_folder must be provided")
+        else:
+            self.indices = indices
+        self.image_folder = image_folder
+
+    def __len__(self) -> int:
+        return len(self.images if self.images is not None else self.indices)
+
+    def __getitem__(self, index):
+        if self.images is not None:
+            return self.images[index], 0
+        return self.image_folder[int(self.indices[index])]
 
 def load_images(
     folder: str | Path = "images",
@@ -113,44 +172,102 @@ def load_images(
     return train_loader, valid_loader, train_dataset.classes
 
 def CNN_test():
+    """
+    Function to do a Cross validation of the CNN model for the AMDNet23 dataset.
+    The parameters which are validated are set in cross_val_config.py
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std
-        ])
 
-    train_loader, test_loader, class_names = load_images(folder="images", batch_size=64, image_size=(256, 256), num_workers=0)
+    #Generate image loader
+    train_loader, test_loader, class_names = load_images(folder="images", batch_size=64, image_size=image_size, num_workers=0)
+    
+    #Set up Scorch NeuralNetClassifier with CNN implementation
+    CNN_Classifier = NeuralNetClassifier(
+        module =CNN,
+        criterion = nn.CrossEntropyLoss(),
+        max_epochs = 2,
+        lr = 0.001,
+        batch_size = 64,
+        iterator_train__shuffle = True,
+        optimizer = optim.Adam,
+        device = device,
+        train_split = None,
+        dataset=IndexedImageDataset,
+        dataset__image_folder=train_loader.dataset,
+        callbacks=[FitProgress()],
+        callbacks__print_log__sink=print_epoch_log)
 
-    model = CNN().to(device)
-    criterion = nn.CrossEntropyLoss() # applies softmax internally
+    #CV Setup
+    labels = np.asarray(train_loader.dataset.targets)
+    cv_indices = np.arange(len(train_loader.dataset))
+    cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=2026)
 
+    #Gridsearch with parameters specified in cross_val_config.py
+    grid_search = GridSearchCV(
+        CNN_Classifier,
+        param_grid=param_grid,
+        cv=cv,
+        scoring='accuracy',
+        n_jobs=1,
+        error_score='raise',
+    )
+
+    #Fit all the models with progress bar
     """
-    The Code below was directly taken from
+    Date: 2026-11-22.
+    Written by: AI assistant using Copilot SDK in VS Code.
+    The below code was adjusted using AI as I was unsure of the tqdm implementation.
+    This corresponds to Level 2 usage of AI, as I tested, changed and validated this function myself.
     """
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    for epoch in range(100):
-        model.train()
-        running = 0.0
-        print(f"epoch {epoch+1}:")
-        for data, target in train_loader:
-            data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            loss = criterion(model(data), target)
-            loss.backward() # Eqs. (10.dconvW)-(10.dmaxpool), by autograd
-            optimizer.step()
-            running += loss.item()
-        print(f"epoch {epoch+1}: loss {running/len(train_loader):.4f}")
+    total_fits = len(ParameterGrid(param_grid)) * cv.get_n_splits() +1 
+    with tqdm.tqdm(
+        total=total_fits,
+        desc="Grid search",
+        unit="fit",
+        dynamic_ncols=True,
+    ) as progress:
+        FitProgress.progress_bar = progress
+        try:
+            grid_search.fit(cv_indices, labels)
+        finally:
+            FitProgress.progress_bar = None
 
-    model.eval()
+    #Select best model and best parameters
+    best_params = grid_search.best_params_
+    best_model = grid_search.best_estimator_
+
+    #Predict on test set and count number of correct predictions
     correct = total = 0
+    predicted_labels = []
+    actual = []
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            pred = model(data).argmax(dim=1)
-            correct += (pred == target).sum().item()
+            pred = best_model.predict(data)
+            actual.extend(target.cpu().numpy())
+            predicted_labels.extend(pred)
+            correct += (pred == target.cpu().numpy()).sum().item()
             total += target.size(0)
-    print(f"test accuracy {100*correct/total:.2f}%")
-
+    
+    #Calculate and print results (gets redirected to results.txt)
+    print(f"Best parameters: {best_params}\n")
+    print(f"test accuracy {100*correct/total:.2f}%\n")
+    Accuracy = accuracy_score(actual, predicted_labels)
+    Precision = precision_score(actual, predicted_labels,average= "macro")
+    Sensitivity_recall = recall_score(actual, predicted_labels, average= "macro")
+    F1_score = f1_score(actual, predicted_labels, average= "macro")
+    Conf_mat = confusion_matrix(actual, predicted_labels)
+    print({"Accuracy":Accuracy,"Precision":Precision,"Sensitivity_recall":Sensitivity_recall,"F1_score":F1_score})
+    print("Confusion Matrix: \n")
+    print(Conf_mat)
+    print("Mean test accuracy from Cross validation \n")
+    print(grid_search.cv_results_["mean_test_score"])
+    print("Standard deviation of the test accuracy from Cross validation \n")
+    print(grid_search.cv_results_["std_test_score"])
 
 if __name__ == "__main__":
-    CNN_test()
+    #Creates a results text file from  the print statements in the functions
+    results_path = Path(__file__).resolve().parent.parent / "results/Project3_results.txt"
+    with results_path.open("w", encoding="utf-8") as results_file:
+        with redirect_stdout(results_file):
+            CNN_test()
