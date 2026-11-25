@@ -8,7 +8,7 @@ param_grid = {
         'module__channels': [(32, 64, 128), (64, 128, 256)],
         'module__kernel_size': [3],
         'lr': [0.001],
-        'max_epochs': [1],
+        'max_epochs': [5],
         'optimizer__weight_decay': [0.0],
         'batch_size': [64],
     }

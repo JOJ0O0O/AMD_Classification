@@ -10,7 +10,14 @@ from pathlib import Path
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Callback
 from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
-from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
 import numpy as np
 import tqdm
 import sys
@@ -332,16 +339,29 @@ def run_cross_validation(model_name="cnn"):
     print(f"Best parameters: {best_params}\n")
     print(f"test accuracy {100*correct/total:.2f}%\n")
     Accuracy = accuracy_score(actual, predicted_labels)
-    Precision = precision_score(actual, predicted_labels,average= "macro")
-    Sensitivity_recall = recall_score(actual, predicted_labels, average= "macro")
-    F1_score = f1_score(actual, predicted_labels, average= "macro")
-    Conf_mat = confusion_matrix(actual, predicted_labels)
+    labels = list(range(len(class_names)))
+    Precision = precision_score(actual, predicted_labels, average="macro", zero_division=0)
+    Sensitivity_recall = recall_score(actual, predicted_labels, average="macro", zero_division=0)
+    F1_score = f1_score(actual, predicted_labels, average="macro", zero_division=0)
+    Conf_mat = confusion_matrix(actual, predicted_labels, labels=labels)
     print({"Accuracy":Accuracy,"Precision":Precision,"Sensitivity_recall":Sensitivity_recall,"F1_score":F1_score})
-    print("Confusion Matrix: \n")
-    print(Conf_mat)
-    print("Mean test accuracy from Cross validation \n")
+    print("Per-class and averaged classification report (recall is sensitivity):")
+    print(
+        classification_report(
+            actual,
+            predicted_labels,
+            labels=labels,
+            target_names=class_names,
+            zero_division=0,
+        )
+    )
+    print("Confusion Matrix (rows = actual, columns = predicted):")
+    print("Actual \\ Predicted\t" + "\t".join(class_names))
+    for class_name, row in zip(class_names, Conf_mat):
+        print(f"{class_name}\t" + "\t".join(str(count) for count in row))
+    print("Mean test accuracy from Cross validation:")
     print(grid_search.cv_results_["mean_test_score"])
-    print("Standard deviation of the test accuracy from Cross validation \n")
+    print("Standard deviation of the test accuracy from Cross validation:")
     print(grid_search.cv_results_["std_test_score"])
 
 if __name__ == "__main__":

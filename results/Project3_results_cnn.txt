@@ -1,0 +1,29 @@
+Model: cnn
+
+Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 5, 'module__channels': (32, 64, 128), 'module__kernel_size': 3, 'optimizer__weight_decay': 0.0}
+
+test accuracy 58.16%
+
+{'Accuracy': 0.5816326530612245, 'Precision': 0.5669571590026136, 'Sensitivity_recall': 0.5848050320606711, 'F1_score': 0.5634744547260616}
+Per-class and averaged classification report (recall is sensitivity):
+              precision    recall  f1-score   support
+
+         amd       0.46      0.24      0.32        98
+    cataract       0.78      0.99      0.87        95
+    diabetes       0.40      0.48      0.44        99
+      normal       0.63      0.62      0.62       100
+
+    accuracy                           0.58       392
+   macro avg       0.57      0.58      0.56       392
+weighted avg       0.57      0.58      0.56       392
+
+Confusion Matrix (rows = actual, columns = predicted):
+Actual \ Predicted	amd	cataract	diabetes	normal
+amd	24	17	54	3
+cataract	1	94	0	0
+diabetes	13	4	48	34
+normal	14	5	19	62
+Mean test accuracy from Cross validation:
+[0.40932312 0.30779055]
+Standard deviation of the test accuracy from Cross validation:
+[0.15900383 0.00127714]

@@ -16,21 +16,41 @@ class CNN(nn.Module):
         hidden_features: int, number of neurons in the FC layer
         """
         super().__init__()
-        self.c1, self.c2, self.c3 = channels
-        self.conv1 = nn.Conv2d(3, self.c1, kernel_size=kernel_size, padding=1)
-        self.conv2 = nn.Conv2d(self.c1, self.c2, kernel_size=kernel_size, padding=1)
-        self.conv3 = nn.Conv2d(self.c2, self.c3, kernel_size=kernel_size, padding=1)
-        self.pool = nn.MaxPool2d(2, 2) # halves each time
-        self.fc1 = nn.Linear(self.c3 * 4 * 4, hidden_features)
+
+        channels = tuple(channels)
+        if not channels or any(c <= 0 for c in channels):
+            raise ValueError("channels must contain one or more positive values")
+        if kernel_size <= 0 or kernel_size % 2 == 0:
+            raise ValueError("kernel_size must be a positive odd number")
+
+        layers = []
+        in_channels = 3
+
+        padding = kernel_size // 2
+        for out_channels in channels:
+            layers.extend([
+                nn.Conv2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
+                ),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(2, 2),
+            ])
+            in_channels = out_channels
+        self.features = nn.Sequential(*layers)
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.fc1 = nn.Linear(channels[-1], hidden_features)
         self.fc2 = nn.Linear(hidden_features, 4)
         self.dropout = nn.Dropout(dropout)
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((4, 4)) #Inserted to be able to work adaptively with different sizes
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x))) 
-        x = self.pool(F.relu(self.conv2(x))) 
-        x = self.pool(F.relu(self.conv3(x))) 
+        x = self.features(x)
         x = self.adaptive_pool(x)
-        x = x.view(x.size(0), self.c3 * 4 * 4)
+        x = x.flatten(start_dim=1)
         x = self.dropout(F.relu(self.fc1(x)))
-        return self.fc2(x) # logits, not probabilities
+        return self.fc2(x)  # logits
