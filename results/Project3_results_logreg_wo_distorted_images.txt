@@ -1,0 +1,19 @@
+Model: logreg
+
+Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 1, 'optimizer__weight_decay': 0.0}
+
+test accuracy 52.30%
+
+{'Accuracy': 0.5229591836734694, 'Precision': 0.5504116507541166, 'Sensitivity_recall': 0.5239920960409682, 'F1_score': 0.49548233052228}
+Confusion Matrix: 
+
+[[61 20  5 12]
+ [25 61  1  8]
+ [40  2 14 43]
+ [20  7  4 69]]
+Mean test accuracy from Cross validation 
+
+[0.44380587]
+Standard deviation of the test accuracy from Cross validation 
+
+[0.02618135]

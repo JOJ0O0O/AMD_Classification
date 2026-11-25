@@ -1,9 +1,11 @@
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from CNN import CNN
+from logistic_regression import LogisticRegression
 from pathlib import Path
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Callback
@@ -15,6 +17,14 @@ import sys
 from contextlib import redirect_stdout
 from cross_val_config import n_folds, image_size, param_grid #Import Configuration from separate config file
 
+# Optional separate grid for logistic regression. If cross_val_config.py does
+# not define logreg_param_grid, the CNN grid is used without its CNN-specific
+# "module__..." entries (see without_module_params).
+try:
+    from cross_val_config import logreg_param_grid
+except ImportError:
+    logreg_param_grid = None
+
 torch.set_num_threads(16)
 
 def print_epoch_log(text):
@@ -25,7 +35,7 @@ def print_epoch_log(text):
 
 class FitProgress(Callback):
     """Update the shared progress bar after each model fit.
-    
+
     Date: 2026-11-22.
     Written by: AI assistant using Copilot SDK in VS Code.
     Add this reusable indexed dataset class to the AMD classification project for the cross validation.
@@ -41,7 +51,7 @@ class FitProgress(Callback):
 class IndexedImageDataset(torch.utils.data.Dataset):
     """
     Load ImageFolder samples lazily from sklearn-provided row indices.
-    
+
     Date: 2026-11-22.
     Written by: AI assistant using Copilot SDK in VS Code.
     Add this reusable indexed dataset class to the AMD classification project for the cross validation.
@@ -171,19 +181,65 @@ def load_images(
 
     return train_loader, valid_loader, train_dataset.classes
 
-def CNN_test():
+def without_module_params(grid):
     """
-    Function to do a Cross validation of the CNN model for the AMDNet23 dataset.
+    Return a copy of a parameter grid without "module__..." entries, i.e.
+    without constructor arguments of the CNN (e.g. module__channels) that the
+    logistic regression does not accept. Works for a dict or a list of dicts.
+
+    Date: 2026-11-25.
+    Written by: Claude Opus 5.5 (Anthropic).
+    Level: TODO - set after testing and validating it yourself.
+    """
+    if isinstance(grid, dict):
+        return {key: value for key, value in grid.items() if not key.startswith("module__")}
+    return [without_module_params(sub_grid) for sub_grid in grid]
+
+def build_module(model_name, train_loader, class_names):
+    """
+    Return the skorch module, its constructor arguments and the parameter grid
+    for the selected model ("cnn" or "logreg").
+
+    Date: 2026-11-25.
+    Written by: Claude Opus 5.5 (Anthropic).
+    Level: TODO - set after testing and validating it yourself.
+    """
+    if model_name == "cnn":
+        return CNN, {}, param_grid
+    if model_name == "logreg":
+        # Number of input features = C * H * W of one preprocessed image.
+        n_inputs = train_loader.dataset[0][0].numel()
+        module_kwargs = {
+            "module__n_inputs": n_inputs,
+            "module__n_outputs": len(class_names),
+        }
+        grid = logreg_param_grid if logreg_param_grid is not None else without_module_params(param_grid)
+        return LogisticRegression, module_kwargs, grid
+    raise ValueError(f"Unknown model: {model_name!r} (use 'cnn' or 'logreg')")
+
+def CNN_test(model_name="cnn"):
+    """
+    Function to do a Cross validation of the selected model ("cnn" or "logreg")
+    for the AMDNet23 dataset.
     The parameters which are validated are set in cross_val_config.py
+
+    Date: 2026-11-25.
+    Modified by: Claude Opus 5.5 (Anthropic). Added model_name so the same
+    cross validation runs for the CNN and the logistic regression.
+    Level: TODO - set after testing and validating the changes yourself.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     #Generate image loader
     train_loader, test_loader, class_names = load_images(folder="images", batch_size=64, image_size=image_size, num_workers=0)
-    
-    #Set up Scorch NeuralNetClassifier with CNN implementation
+
+    #Select model, its constructor arguments and the parameter grid
+    module, module_kwargs, model_param_grid = build_module(model_name, train_loader, class_names)
+
+    #Set up Scorch NeuralNetClassifier with the selected model
     CNN_Classifier = NeuralNetClassifier(
-        module =CNN,
+        module = module,
+        **module_kwargs,
         criterion = nn.CrossEntropyLoss(),
         max_epochs = 2,
         lr = 0.001,
@@ -205,7 +261,7 @@ def CNN_test():
     #Gridsearch with parameters specified in cross_val_config.py
     grid_search = GridSearchCV(
         CNN_Classifier,
-        param_grid=param_grid,
+        param_grid=model_param_grid,
         cv=cv,
         scoring='accuracy',
         n_jobs=1,
@@ -219,10 +275,10 @@ def CNN_test():
     The below code was adjusted using AI as I was unsure of the tqdm implementation.
     This corresponds to Level 2 usage of AI, as I tested, changed and validated this function myself.
     """
-    total_fits = len(ParameterGrid(param_grid)) * cv.get_n_splits() +1 
+    total_fits = len(ParameterGrid(model_param_grid)) * cv.get_n_splits() +1
     with tqdm.tqdm(
         total=total_fits,
-        desc="Grid search",
+        desc=f"Grid search ({model_name})",
         unit="fit",
         dynamic_ncols=True,
     ) as progress:
@@ -248,8 +304,9 @@ def CNN_test():
             predicted_labels.extend(pred)
             correct += (pred == target.cpu().numpy()).sum().item()
             total += target.size(0)
-    
+
     #Calculate and print results (gets redirected to results.txt)
+    print(f"Model: {model_name}\n")
     print(f"Best parameters: {best_params}\n")
     print(f"test accuracy {100*correct/total:.2f}%\n")
     Accuracy = accuracy_score(actual, predicted_labels)
@@ -266,8 +323,15 @@ def CNN_test():
     print(grid_search.cv_results_["std_test_score"])
 
 if __name__ == "__main__":
+    # Choose the model on the command line:
+    #   python main.py            -> CNN
+    #   python main.py logreg     -> logistic regression
+    parser = argparse.ArgumentParser(description="Cross validation on AMDNet23")
+    parser.add_argument("model", nargs="?", default="cnn", choices=["cnn", "logreg"])
+    args = parser.parse_args()
+
     #Creates a results text file from  the print statements in the functions
-    results_path = Path(__file__).resolve().parent.parent / "results/Project3_results.txt"
+    results_path = Path(__file__).resolve().parent.parent / f"results/Project3_results_{args.model}.txt"
     with results_path.open("w", encoding="utf-8") as results_file:
         with redirect_stdout(results_file):
-            CNN_test()
+            CNN_test(args.model)
