@@ -96,7 +96,7 @@ def load_images(
     std: tuple[float, float, float] = IMAGENET_STD,
 ) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, list[str]]:
     """
-    Load the AMDNet23 training and validation image splits.
+    Load the combined AMDNet23 images and create a stratified 80/20 split.
 
     Date: 2026-11-19.
     Written by: AI assistant using Copilot SDK in VS Code.
@@ -110,13 +110,20 @@ def load_images(
     order in the docstring.
     Level: TODO - set after testing and validating the changes yourself.
 
+    Date: 2026-11-25.
+    Modified by: AI assistant using Copilot SDK in VS Code. Load from the
+    combined image folder and create deterministic stratified training and
+    validation subsets in an 80/20 ratio.
+    Level: TODO - set after testing and validating these changes yourself.
+
     Images of any size and colour mode are accepted: ImageFolder converts
     every image to RGB, the shorter side is scaled so that the image covers
     image_size without distortion, and the centre is cropped to image_size.
 
     Args:
-        folder: Directory containing the image dataset. Relative paths are
-            resolved from the project root.
+        folder: The images directory containing ``combined``, or the combined
+            image directory itself. Relative paths are resolved from the
+            project root.
         batch_size: Number of images in each data-loader batch.
         image_size: Output (height, width) of every image.
         num_workers: Number of worker processes used to load data.
@@ -128,8 +135,8 @@ def load_images(
         names in dataset order.
 
     Raises:
-        ValueError: If the folder or one of the required splits is missing,
-            or if the splits contain incompatible class definitions.
+        ValueError: If the folder or combined dataset is missing, if any class
+            has fewer than five images, or if the dataset contains no images.
     """
     # Resolve relative folders consistently, regardless of the current working
     # directory used to start the program.
@@ -149,24 +156,13 @@ def load_images(
     if len(image_size) != 2 or any(size <= 0 for size in image_size):
         raise ValueError("image_size must contain two positive dimensions")
 
-    # Locate the AMDNet23 dataset below the images folder. This supports its
-    # nested storage layout while allowing a direct train/valid layout too.
-    split_parents = [
-        path.parent
-        for path in images_folder.rglob("train")
-        if path.is_dir()
-        and (path.parent / "valid").is_dir()
-    ]
-
-    if not split_parents:
-        raise ValueError(
-            f"No dataset with 'train' and 'valid' folders was found under "
-            f"{images_folder}"
-        )
-
-    dataset_root = split_parents[0]
-    train_folder = dataset_root / "train"
-    valid_folder = dataset_root / "valid"
+    combined_folder = (
+        images_folder
+        if images_folder.name.lower() == "combined"
+        else images_folder / "combined"
+    )
+    if not combined_folder.is_dir():
+        raise ValueError(f"Combined images folder does not exist: {combined_folder}")
 
     # Resize(int) scales the SHORTER side and keeps the aspect ratio. Using the
     # larger target dimension guarantees that both sides are at least as large
@@ -183,17 +179,34 @@ def load_images(
 
     # ImageFolder infers class labels from subdirectory names and opens every
     # image as RGB, so grayscale/RGBA files also become 3-channel tensors.
-    train_dataset = datasets.ImageFolder(train_folder, transform=transform)
-    valid_dataset = datasets.ImageFolder(valid_folder, transform=transform)
+    dataset = datasets.ImageFolder(combined_folder, transform=transform)
+    if not dataset.samples:
+        raise ValueError(f"No images found in {combined_folder}")
 
-    if not train_dataset.samples:
-        raise ValueError(f"No training images found in {train_folder}")
-    if not valid_dataset.samples:
-        raise ValueError(f"No validation images found in {valid_folder}")
-    if train_dataset.classes != valid_dataset.classes:
-        raise ValueError(
-            "Training and validation splits contain different class names"
-        )
+    targets = np.asarray(dataset.targets)
+    class_counts = np.bincount(targets, minlength=len(dataset.classes))
+    if np.any(class_counts < 5):
+        raise ValueError("Each class must contain at least five images to split")
+
+    # The first fold of a shuffled five-fold stratified split gives each class
+    # an 80/20 train/validation split while keeping the result reproducible.
+    splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=2026)
+    train_indices, valid_indices = next(
+        splitter.split(np.zeros(len(targets)), targets)
+    )
+
+    class StratifiedImageSubset(torch.utils.data.Subset):
+        def __init__(
+            self, image_folder: datasets.ImageFolder, indices: np.ndarray
+        ) -> None:
+            super().__init__(image_folder, indices.tolist())
+            self.classes = image_folder.classes
+            self.targets = [
+                image_folder.targets[index] for index in self.indices
+            ]
+
+    train_dataset = StratifiedImageSubset(dataset, train_indices)
+    valid_dataset = StratifiedImageSubset(dataset, valid_indices)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -352,7 +365,7 @@ def run_cross_validation(model_name="cnn"):
             predicted_labels,
             labels=labels,
             target_names=class_names,
-            zero_division=0,
+            zero_division='warn',
         )
     )
     print("Confusion Matrix (rows = actual, columns = predicted):")

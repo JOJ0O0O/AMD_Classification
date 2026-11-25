@@ -1,19 +1,29 @@
 Model: logreg
 
-Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 1, 'optimizer__weight_decay': 0.0}
+Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 5, 'optimizer__weight_decay': 0.0}
 
-test accuracy 52.30%
+test accuracy 61.35%
 
-{'Accuracy': 0.5229591836734694, 'Precision': 0.5504116507541166, 'Sensitivity_recall': 0.5239920960409682, 'F1_score': 0.49548233052228}
-Confusion Matrix: 
+{'Accuracy': 0.6135135135135135, 'Precision': 0.6226433086312119, 'Sensitivity_recall': 0.6055929487179488, 'F1_score': 0.5804598448715454}
+Per-class and averaged classification report (recall is sensitivity):
+              precision    recall  f1-score   support
 
-[[61 20  5 12]
- [25 61  1  8]
- [40  2 14 43]
- [20  7  4 69]]
-Mean test accuracy from Cross validation 
+         amd       0.56      0.46      0.51        78
+    cataract       0.61      0.98      0.75        96
+    diabetes       0.70      0.29      0.41        96
+      normal       0.62      0.69      0.65       100
 
-[0.44380587]
-Standard deviation of the test accuracy from Cross validation 
+    accuracy                           0.61       370
+   macro avg       0.62      0.61      0.58       370
+weighted avg       0.63      0.61      0.58       370
 
-[0.02618135]
+Confusion Matrix (rows = actual, columns = predicted):
+Actual \ Predicted	amd	cataract	diabetes	normal
+amd	36	27	5	10
+cataract	1	94	0	1
+diabetes	16	21	28	31
+normal	11	13	7	69
+Mean test accuracy from Cross validation:
+[0.5733451]
+Standard deviation of the test accuracy from Cross validation:
+[0.02260085]

@@ -1,29 +1,29 @@
 Model: cnn
 
-Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 5, 'module__channels': (64, 128, 256), 'module__kernel_size': 3, 'optimizer__weight_decay': 0.0}
+Best parameters: {'batch_size': 64, 'lr': 0.001, 'max_epochs': 5, 'module__channels': (64, 128, 256), 'module__hidden_features': 128, 'module__kernel_size': 3, 'optimizer__weight_decay': 0.0}
 
-test accuracy 63.59%
+test accuracy 63.24%
 
-{'Accuracy': 0.6358974358974359, 'Precision': 0.673056856126597, 'Sensitivity_recall': 0.6376532550079174, 'F1_score': 0.6287169945263149}
+{'Accuracy': 0.6324324324324324, 'Precision': 0.6083039746464793, 'Sensitivity_recall': 0.6146554487179487, 'F1_score': 0.5875398713254011}
 Per-class and averaged classification report (recall is sensitivity):
               precision    recall  f1-score   support
 
-         amd       0.76      0.32      0.45        98
-    cataract       0.93      0.96      0.94        95
-    diabetes       0.41      0.55      0.47        97
-      normal       0.59      0.73      0.65       100
+         amd       0.45      0.29      0.36        78
+    cataract       0.77      1.00      0.87        96
+    diabetes       0.63      0.34      0.45        96
+      normal       0.57      0.82      0.67       100
 
-    accuracy                           0.64       390
-   macro avg       0.67      0.64      0.63       390
-weighted avg       0.67      0.64      0.63       390
+    accuracy                           0.63       370
+   macro avg       0.61      0.61      0.59       370
+weighted avg       0.62      0.63      0.60       370
 
 Confusion Matrix (rows = actual, columns = predicted):
 Actual \ Predicted	amd	cataract	diabetes	normal
-amd	31	4	52	11
-cataract	3	91	1	0
-diabetes	4	1	53	39
-normal	3	2	22	73
+amd	23	20	13	22
+cataract	0	96	0	0
+diabetes	21	3	33	39
+normal	7	5	6	82
 Mean test accuracy from Cross validation:
-[0.51532567 0.61047254 0.63473819]
+[0.52738452 0.53548074 0.6274467  0.63420162 0.66194181 0.62744121]
 Standard deviation of the test accuracy from Cross validation:
-[0.0210728  0.0063857  0.02809706]
+[0.00170885 0.02397871 0.00633709 0.01579838 0.01194181 0.01445068]

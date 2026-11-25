@@ -11,4 +11,5 @@ param_grid = {
         'max_epochs': [5],
         'optimizer__weight_decay': [0.0],
         'batch_size': [64],
+        'module__hidden_features' : [128, 256]
     }
